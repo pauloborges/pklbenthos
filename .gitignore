@@ -1,0 +1,9 @@
+bin/
+build/
+out/
+
+.idea/
+.devenv*
+devenv.local.nix
+
+.pre-commit-config.yaml

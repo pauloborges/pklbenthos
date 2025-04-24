@@ -1,0 +1,113 @@
+# Harvest the schema of every new release, generate the libraries, and open a
+# pull request when the tree changes.
+#
+# The job runs on a timer because Redpanda Connect ships about 80 releases a
+# year, and a release that changes no library still needs an entry in the
+# index.
+name: Sync distribution releases
+
+on:
+  schedule:
+    # Every day, early enough to hold a release of the day before.
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      distribution:
+        description: Distribution to sync, or every one of them
+        type: choice
+        default: all
+        options:
+          - all
+          - redpanda-connect
+          - redpanda-connect-cloud
+          - bento
+          - benthos
+      since:
+        description: Ignore a release older than this version
+        type: string
+        default: ""
+      limit:
+        description: Read the schema of no more than this many of the newest releases
+        type: string
+        default: "10"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # One job for each distribution, so that the disk of a runner carries the
+  # images of one distribution alone.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      distributions: ${{ steps.pick.outputs.distributions }}
+    steps:
+      - id: pick
+        env:
+          CHOICE: ${{ inputs.distribution || 'all' }}
+        run: |
+          if [ "$CHOICE" = "all" ]; then
+            echo 'distributions=["redpanda-connect","redpanda-connect-cloud","bento","benthos"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "distributions=[\"$CHOICE\"]" >> "$GITHUB_OUTPUT"
+          fi
+
+  sync:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      # A failure on one distribution says nothing about the others, and each
+      # one opens a pull request of its own.
+      fail-fast: false
+      matrix:
+        distribution: ${{ fromJSON(needs.plan.outputs.distributions) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # A runner holds about 14 GB free, and the image of one release of
+      # Redpanda Connect takes more than a gigabyte once it unpacks. --prune
+      # drops each image as soon as it gives up its schema, and --limit bounds
+      # how many releases a run reads at all. Without the two, a first run over
+      # a hundred releases fills the disk.
+      - name: Sync
+        env:
+          DISTRIBUTION: ${{ matrix.distribution }}
+          SINCE: ${{ inputs.since }}
+          LIMIT: ${{ inputs.limit || '10' }}
+          AUTHOR: ${{ vars.PACKAGE_AUTHOR }}
+        run: |
+          base="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download"
+          source="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+
+          args=("$DISTRIBUTION" --prune --limit "$LIMIT"
+            --author "$AUTHOR"
+            --base-url "$base"
+            --source-code "$source"
+            --issue-tracker "$source/issues")
+
+          if [ -n "$SINCE" ]; then
+            args+=(--since "$SINCE")
+          fi
+
+          go run ./cmd/pklbenthos sync "${args[@]}"
+
+      # A pull request, and not a push, so that a change in the compiler or in
+      # the schema of a release gets a reader before it reaches the branch.
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: sync/${{ matrix.distribution }}
+          title: "chore: sync ${{ matrix.distribution }}"
+          commit-message: "chore: sync ${{ matrix.distribution }}"
+          body: |
+            The sync command read the releases of `${{ matrix.distribution }}`
+            and wrote the schemas and the libraries that changed.
+
+            Merge this to publish. The publish workflow releases every library
+            that has no release yet.
+          delete-branch: true

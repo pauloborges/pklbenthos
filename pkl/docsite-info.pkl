@@ -1,0 +1,15 @@
+/// Pkl libraries for the configuration of Benthos distributions.
+///
+/// A pipeline of Benthos, of Bento, or of Redpanda Connect is described using
+/// a YAML file. These libraries let you write one in Pkl instead, so that an
+/// editor completes a field name, and Pkl reports a wrong value where you
+/// write it.
+///
+/// Each library holds the components of one release of one build, and comes
+/// from the configuration schema that the release publishes. Pick the version
+/// that matches the build you run.
+///
+/// The generator is at https://github.com/pauloborges/pklbenthos.
+amends "pkl:DocsiteInfo"
+
+title = "pklbenthos"

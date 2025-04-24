@@ -1,0 +1,97 @@
+# Build the Pkldoc site and publish it to GitHub Pages.
+#
+# The site covers the newest release of each distribution, and not every
+# release that the tree holds. Pkldoc writes about 20 MB for one library, so a
+# site over the whole window of ten releases weighs more than 300 MB and takes
+# half an hour of processor time. The newest release of each distribution
+# weighs about 70 MB and takes a quarter of a minute.
+#
+# A reader who needs an older release reads the doc comments in the package
+# itself, which every editor shows.
+name: Publish Pkl docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pkl/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and let a running one finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pkl-community/setup-pkl@0bffd1602015ccf46333e880f81087e73fd1a361 # v0.0.9
+        with:
+          pkl-version: "0.31.1"
+
+      # The pkl command holds no `doc` subcommand, and nixpkgs carries no
+      # package for Pkldoc, so take the binary that the release publishes.
+      - name: Install Pkldoc
+        env:
+          PKL_VERSION: "0.31.1"
+        run: |
+          curl -fsSL -o /usr/local/bin/pkldoc \
+            "https://github.com/apple/pkl/releases/download/${PKL_VERSION}/pkldoc-linux-amd64"
+          chmod +x /usr/local/bin/pkldoc
+          pkldoc --version
+
+      # Pkldoc reads every module of every package in one run, and it needs the
+      # doc-package-info.pkl of each one. Take the newest release of each
+      # distribution, and the docsite-info.pkl that titles the site.
+      - name: Collect the newest release of each distribution
+        run: |
+          mkdir -p build/docs-src
+          cp pkl/docsite-info.pkl build/docs-src/
+
+          for dist in pkl/*/; do
+            name=$(basename "$dist")
+            newest=$(ls "$dist" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+
+            if [ -z "$newest" ]; then
+              continue
+            fi
+
+            echo "  $name -> $newest"
+            mkdir -p "build/docs-src/$name"
+            cp -R "$dist$newest" "build/docs-src/$name/"
+          done
+
+      - name: Generate
+        working-directory: build/docs-src
+        run: |
+          # One invocation, because a second batch would carry no
+          # doc-package-info.pkl and Pkldoc would refuse it. The paths of the
+          # newest releases stay well inside the limit of the command line.
+          find . -name '*.pkl' -print0 | sed 's|\./||g' \
+            | xargs -0 pkldoc -o "$GITHUB_WORKSPACE/build/docs" >/dev/null
+
+          du -sh "$GITHUB_WORKSPACE/build/docs"
+
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+
+      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+        with:
+          path: build/docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

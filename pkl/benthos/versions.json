@@ -1,0 +1,12 @@
+{
+  "distribution": "benthos",
+  "generator": "1.0.0",
+  "product_name": "Benthos",
+  "license": "MIT",
+  "releases": [
+    "4.25.0",
+    "4.25.1",
+    "4.26.0",
+    "4.27.0"
+  ]
+}

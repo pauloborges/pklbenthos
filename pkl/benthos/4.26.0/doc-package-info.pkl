@@ -1,0 +1,13 @@
+/// Pkl library for the configuration of Benthos 4.26.0.
+///
+/// Every component of the build has a module of its own, and every field
+/// of a component has a type. A pipeline amends `Configuration.pkl` and
+/// renders as the YAML that Benthos reads.
+amends "pkl:DocPackageInfo"
+
+name = "com.redpanda.benthos"
+version = "4.26.0"
+importUri = "https://github.com/pauloborges/pklbenthos/releases/download/benthos-4.26.0@1.0.0/benthos-4.26.0@1.0.0#/"
+authors { "Paulo Borges <coding@pauloborges.pw>" }
+sourceCode = "https://github.com/pauloborges/pklbenthos"
+issueTracker = "https://github.com/pauloborges/pklbenthos/issues"
