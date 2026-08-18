@@ -4,13 +4,13 @@
 ///
 /// Using this field overrides the SSL/TLS settings in the environment and DSN.
 ///
-/// Status: stable
-module com.redpanda.connect.cloud.inputs.PostgresCdc
+/// Status: deprecated
+module com.redpanda.connect.cloud.inputs.PgStream
 extends "../Input.pkl"
 
 import "../Processor.pkl"
 
-fixed plugin = "postgres_cdc"
+fixed plugin = "pg_stream"
 
 /// The Data Source Name for the PostgreSQL database in the form of
 /// `postgres://[user[:password]@][netloc][:port][/dbname][?param1=value1&...]`. Please
@@ -28,7 +28,8 @@ include_transaction_markers: Boolean?
 /// When set to true, the plugin will first stream a snapshot of all existing data in the
 /// database before streaming changes. In order to use this the tables that are being
 /// snapshot MUST have a primary key set so that reading from the table can be
-/// parallelized.
+/// parallelized. Note that this has no effect if `tables` is left empty, since the
+/// snapshot is only planned for tables listed there.
 ///
 /// Default: `false`
 stream_snapshot: Boolean?
@@ -52,6 +53,11 @@ schema: String
 
 /// A list of table names to include in the logical replication. Each table should be
 /// specified as a separate item.
+///
+/// If left empty, the underlying PostgreSQL publication is created `FOR ALL TABLES`,
+/// which replicates every table in every schema of the database, ignoring `schema`. This
+/// also disables `stream_snapshot`, since the initial snapshot is only planned for tables
+/// listed here.
 tables: Listing<String>
 
 /// The maximum number of messages that can be processed at a given time. Increasing this
@@ -118,6 +124,58 @@ tls: Tls?
 /// credentials are used to generate temporary authentication tokens instead of a static
 /// password.
 aws: Aws?
+
+/// The name of the table used to send control signals to the connector, excluding the
+/// schema. The table must
+/// exist in the schema configured via the `schema` field, and must not also appear in
+/// `tables`
+/// — the signal table is implicitly added to the publication and excluded from snapshot
+/// scans, so listing
+/// it in both places is rejected at startup. It must have at least these columns —
+/// startup validation checks
+/// column names only, not types, so a wrong column type (e.g. `data JSONB` instead of
+/// `TEXT`)
+/// is only caught at runtime, on the first signal row read:
+///
+/// - **id** — any type representable as a string (e.g. `SERIAL`, `BIGSERIAL`, `UUID`,
+///   `VARCHAR`)
+/// - **type** — should be `VARCHAR` or another string type — the signal type (see
+///   supported signals below)
+/// - **data** — should be `TEXT` — a JSON object containing signal parameters
+///
+/// Create the table with:
+///
+/// ```sql
+/// CREATE TABLE <schema>.<signal_table_name> (
+///     id   SERIAL PRIMARY KEY,
+///     type VARCHAR(32),
+///     data TEXT
+/// );
+/// ```
+///
+/// Signal rows are published as regular output messages (`operation=insert`,
+/// `table=<signal_table_name>`).
+/// To exclude them from downstream processing, filter on the `table` metadata field using
+/// a
+/// `mapping` processor:
+///
+/// ```yaml
+/// pipeline:
+///   processors:
+///     - mapping: |
+///         root = if @table == "rpcn_signal_table" { deleted() } else { this }
+/// ```
+///
+/// **Supported signals**
+///
+/// **`log`** — recognized and logged when received. The `data` column must contain
+/// a JSON object with a `message` key, whose value is written to the connector's log
+/// output.
+///
+/// ```sql
+/// INSERT INTO <schema>.<signal_table_name> (type, data) VALUES ('log', '{"message": "Signal message"}');
+/// ```
+signal_table_name: String?
 
 /// Whether messages that are rejected (nacked) at the output level should be
 /// automatically replayed indefinitely, eventually resulting in back pressure if the

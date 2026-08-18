@@ -5,6 +5,10 @@
 /// Executes Jira API queries based on input messages and returns structured results. The
 /// processor handles pagination, retries, and field expansion automatically.
 ///
+/// This processor is deprecated in favour of the `jira` input, which streams issues,
+/// comments, and changelog entries with cursor-based incremental polling. The processor
+/// remains available for enrichment and lookup style operations.
+///
 /// Supports querying the following Jira resources:
 /// - Issues (JQL queries)
 /// - Issue transitions
@@ -18,7 +22,7 @@
 /// The processor authenticates using basic authentication with username and API token.
 /// Input messages should contain valid Jira queries in JSON format.
 ///
-/// Status: stable
+/// Status: deprecated
 module com.redpanda.connect.cloud.processors.Jira
 extends "../Processor.pkl"
 
