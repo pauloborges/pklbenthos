@@ -6,20 +6,19 @@
 /// Writes a batch of messages to Kafka brokers and waits for acknowledgement before
 /// propagating it back to the input.
 ///
-/// This output often out-performs the traditional `kafka` output as well as providing
-/// more useful logs and error messages.
-///
 /// Status: stable
-module com.redpanda.connect.cloud.outputs.KafkaFranz
+module com.redpanda.connect.cloud.outputs.Redpanda
 extends "../Output.pkl"
 
 import "../Processor.pkl"
 
-fixed plugin = "kafka_franz"
+fixed plugin = "redpanda"
 
 /// A list of broker addresses to connect to in order to establish connections. If an item
-/// of the list contains commas it will be expanded into multiple addresses.
-seed_brokers: Listing<String>
+/// of the list contains commas it will be expanded into multiple addresses. When this
+/// field is omitted the global `redpanda` block will be referenced for connection
+/// details.
+seed_brokers: Listing<String>?
 
 /// An identifier for the client connection.
 ///
@@ -82,15 +81,22 @@ timestamp_ms: String?
 
 /// The maximum number of batches to be sending in parallel at any given time.
 ///
-/// Default: `10`
+/// Default: `256`
 max_in_flight: Int?
 
-/// Allows you to configure a [batching
-/// policy](https://docs.redpanda.com/redpanda-connect/configuration/batching).
+/// Optional explicit batching policy for the output. Note that when batches are formed at
+/// the input level they can be expanded by this policy, but not contracted. When
+/// consuming data from a Redpanda input it is recommended to tune batches from the input
+/// config via the `max_yield_batch_bytes` field, or the `unordered_processing.batching`
+/// field if appropriate.
 batching: Batching?
 
-/// Deprecated.
-rack_id: String
+/// EXPERIMENTAL: A [Bloblang
+/// mapping](https://docs.redpanda.com/redpanda-connect/guides/bloblang/about) used to
+/// inject an object containing tracing propagation information into outbound messages.
+/// The specification of the injected fields will match the format used by the service
+/// wide tracer.
+inject_tracing_map: String?
 
 /// Override the default murmur2 hashing partitioner.
 partitioner: ("least_backup"|"manual"|"murmur2_hash"|"round_robin")?
@@ -161,10 +167,15 @@ max_buffered_records: Int?
 /// Default: `"0"`
 max_buffered_bytes: String?
 
-/// The maximum number of produce requests in flight per broker connection. When
-/// `idempotent_write` is enabled, this is capped at 5 by the Kafka protocol (and at 1 for
-/// Kafka < v1.0.0). When `idempotent_write` is disabled, higher values improve throughput
-/// by pipelining requests but may cause out-of-order delivery.
+/// The maximum number of produce requests in flight per broker connection. While
+/// `idempotent_write` is enabled (the default) this must be `1`, as the client relies on
+/// a single in-flight request per broker to guarantee ordering. To use higher values you
+/// must set `idempotent_write` to `false`, which allows requests to be pipelined for
+/// throughput but may cause duplicate and out-of-order delivery on retries. Note that
+/// this is distinct from the output's `max_in_flight` field, which counts message batches
+/// being written in parallel rather than produce requests on the wire. A value of `1` is
+/// not a throughput ceiling: records from concurrent writes are coalesced into fewer,
+/// larger produce requests.
 ///
 /// Default: `1`
 max_in_flight_requests: Int?

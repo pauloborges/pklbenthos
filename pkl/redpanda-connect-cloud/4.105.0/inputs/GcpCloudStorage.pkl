@@ -20,7 +20,7 @@
 /// You can access these metadata fields using [function
 /// interpolation](https://docs.redpanda.com/redpanda-connect/configuration/interpolation#bloblang-queries).
 ///
-/// ### Credentials
+/// ## Credentials
 ///
 /// By default Redpanda Connect will use a shared credentials file when connecting to GCP
 /// services. You can find out more in
