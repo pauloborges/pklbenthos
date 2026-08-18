@@ -21,4 +21,4 @@ path: String
 /// codec, where x is the character sequence custom delimiter.
 ///
 /// Default: `"lines"`
-codec: ("all-bytes"|"append"|"lines"|"delim:x")?
+codec: ("all-bytes"|"append"|"delim:x"|"lines")?

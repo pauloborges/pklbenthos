@@ -14,6 +14,7 @@ import "RateLimit.pkl"
 import "Logger.pkl"
 import "Metrics.pkl"
 import "Tracer.pkl"
+import "ErrorHandling.pkl"
 import "Tests.pkl"
 import "Redpanda.pkl"
 import "Plugin.pkl"
@@ -73,6 +74,9 @@ class Root {
   ///
   /// Default: `"20s"`
   shutdown_timeout: String?
+
+  /// Configures engine-wide error handling behaviour.
+  error_handling: ErrorHandling?
 
   /// A list of one or more unit tests to execute.
   tests: Listing<Tests>?
