@@ -31,6 +31,13 @@
 /// S3 object takes longer to process than the visibility timeout of your queue then the
 /// same objects might be processed multiple times.
 ///
+/// Amazon S3 sends an `s3:TestEvent` notification whenever a bucket's event configuration
+/// is saved, to verify the queue is reachable. Redpanda Connect detects these (including
+/// via an SNS envelope) and deletes them automatically. Any other message with no
+/// extractable target key, for example due to a misconfigured
+/// `sqs.key_path`/`sqs.bucket_path`, is logged as a warning and left on the queue
+/// instead.
+///
 /// ## Download large files
 ///
 /// When downloading large files it's often necessary to process it in streamed parts in
@@ -239,4 +246,13 @@ class Sqs {
   ///
   /// Default: `0`
   nack_visibility_timeout: Int?
+
+  /// A message from which no target key can be extracted (e.g. due to a misconfigured
+  /// `key_path`/`bucket_path`) is never deleted, so it's redelivered and re-evaluated
+  /// repeatedly until the underlying issue is fixed. This field limits how often that
+  /// condition is logged as a warning, to avoid flooding the logs; every occurrence is
+  /// still logged at debug level. Set to `0s` to warn on every occurrence.
+  ///
+  /// Default: `"30s"`
+  zero_key_warn_interval: String?
 }

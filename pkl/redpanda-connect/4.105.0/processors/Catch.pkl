@@ -27,6 +27,12 @@
 /// useful for when it's possible to recover failed messages, or when special actions
 /// (such as logging/metrics) are required before dropping them.
 ///
+/// > **Note:** When strict error handling (`error_handling.strict`) is enabled this
+/// > processor does not recover anything, as a failed message short-circuits past it
+/// > rather than reaching it. Use the
+/// > [`try_catch`](https://docs.redpanda.com/redpanda-connect/components/processors/try_catch)
+/// > processor instead, which contains both the fallible step and its recovery.
+///
 /// More information about error handling can be found in
 /// [error_handling](https://docs.redpanda.com/redpanda-connect/configuration/error_handling).
 ///

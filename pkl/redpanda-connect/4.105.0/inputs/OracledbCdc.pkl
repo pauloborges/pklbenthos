@@ -15,7 +15,8 @@
 /// - table_name: Name of the table that the message originated from.
 /// - operation: Type of operation that generated the message: "read", "delete", "insert",
 ///   or "update". "read" is from messages that are read in the initial snapshot phase.
-/// - scn: the System Change Number in Oracle.
+/// - scn: The System Change Number in Oracle. Messages published as part of a snapshot
+///   will contain Oracle's current SCN captured at time of snapshot.
 /// - transaction_id: The Oracle transaction ID in `USN.SLOT.SEQ` format, identifying the
 ///   transaction that produced the change. Not present on snapshot (`read`) messages.
 /// - source_ts_ms: The timestamp of when Oracle wrote the change record into the redo
@@ -25,8 +26,9 @@
 /// - commit_ts_ms: The timestamp of the transaction commit, expressed as milliseconds
 ///   since the Unix epoch. Sourced from `V$LOGMNR_CONTENTS.TIMESTAMP` on the COMMIT redo
 ///   record — this is Oracle's wall-clock time when the commit was written to the redo
-///   log, not a dedicated commit-timestamp column. Not present on snapshot (`read`)
-///   messages.
+///   log, not a dedicated commit-timestamp column. For snapshot (`read`) messages, this
+///   reflects Oracle's `SYSTIMESTAMP` at the moment the snapshot SCN was captured, so all
+///   snapshot messages share the same value.
 /// - schema: The table schema, for use with schema-aware downstream processors such as
 ///   `schema_registry_encode`. When new columns are detected in CDC events, the schema is
 ///   automatically refreshed from the Oracle catalog. Dropped columns are reflected after
@@ -65,8 +67,16 @@ wallet_password: String?
 /// If set to true, the connector will query all the existing data as a part of snapshot
 /// process. Otherwise, it will start from the current System Change Number position.
 ///
+/// Deprecated.
+///
 /// Default: `false`
 stream_snapshot: Boolean?
+
+/// Controls snapshot behaviour. `none` (default) skips snapshotting and starts streaming
+/// from the current SCN. `snapshot_only` performs a full snapshot, persists the SCN
+/// checkpoint, then stops without streaming. `snapshot_and_stream` performs a full
+/// snapshot then transitions to streaming.
+snapshot_mode: ("none"|"snapshot_only"|"snapshot_and_stream")?
 
 /// Specifies a number of tables that will be processed in parallel during the snapshot
 /// processing stage.
@@ -81,6 +91,16 @@ snapshot_max_batch_size: Int?
 
 /// LogMiner configuration settings.
 logminer: Logminer?
+
+/// A map of fully-qualified table names (e.g. SCHEMA.TABLE) to SQL SELECT queries, used
+/// to override the default snapshot query per table.
+///
+/// Each query must project every column of the table's primary key - all of them, for a
+/// composite key - even if it otherwise selects only a subset of columns. Snapshotting
+/// pages through a table's rows by filtering and sorting on its full primary key, against
+/// the query's own result set - if any primary key column isn't projected, this fails
+/// part-way through the snapshot, once the first batch of rows has been read.
+snapshot_filters: Mapping<String, String>?
 
 /// Regular expressions for tables to include.
 include: Listing<String>
@@ -238,6 +258,18 @@ class Logminer {
   ///
   /// Default: `"oracledb_cdc"`
   transaction_cache_key: String?
+
+  /// The maximum duration a single LogMiner session may stay open before being forcibly
+  /// ended and restarted, even if the underlying redo log files haven't changed. By
+  /// default, a LogMiner session is only restarted when a redo log switch is detected. On
+  /// databases where switches are infrequent, a session can stay open for a long time,
+  /// and LogMiner has been observed to accumulate server-side PGA memory (particularly
+  /// around online catalog dictionary lookups) until Oracle terminates the session with
+  /// ORA-04036. Setting this forces a periodic restart independent of log switches. Set
+  /// to 0 (default) to disable and restart only on log switches.
+  ///
+  /// Default: `"0s"`
+  max_session_age: String?
 }
 
 class Batching {

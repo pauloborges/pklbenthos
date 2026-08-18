@@ -47,7 +47,7 @@
 ///
 /// Note: The `header` field is only set when `parse_header_row` is `true`.
 ///
-/// ### Output CSV column order
+/// ## Output CSV column order
 ///
 /// When [creating
 /// CSV](https://docs.redpanda.com/redpanda-connect/guides/bloblang/advanced#creating-csv)
