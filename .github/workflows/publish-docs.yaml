@@ -1,13 +1,21 @@
 # Build the Pkldoc site and publish it to GitHub Pages.
 #
-# The site covers the newest release of each distribution, and not every
-# release that the tree holds. Pkldoc writes about 20 MB for one library, so a
-# site over the whole window of ten releases weighs more than 300 MB and takes
-# half an hour of processor time. The newest release of each distribution
-# weighs about 70 MB and takes a quarter of a minute.
+# The site covers every release that the tree holds, and not the newest release
+# alone. Pkldoc keys a site by the name and the version of
+# doc-package-info.pkl, which are the module prefix and the release, so every
+# release of a distribution becomes another version of one package. The version
+# selector of a page reads its list at run time from data/PACKAGE/_/index.json,
+# and each run merges its own release into that list.
 #
-# A reader who needs an older release reads the doc comments in the package
-# itself, which every editor shows.
+# Pkldoc runs once for each library, into one output directory. A run adds to
+# what the directory already holds, and each run carries the
+# doc-package-info.pkl of its own library, so no batch can lose it.
+#
+# Measured over 34 libraries: 98 seconds of Pkldoc, 611 MiB of site, and 41 MB
+# after the artifact compresses. A published site must stay under 1 GB, so the
+# last step fails when the site passes that. The window of releases slides
+# instead of growing, and the components of a release grow about 3% over ten
+# releases, so the size of the site holds steady.
 name: Publish Pkl docs
 
 on:
@@ -16,6 +24,11 @@ on:
     paths:
       - "pkl/**"
   workflow_dispatch:
+    inputs:
+      releases:
+        description: How many of the newest releases of each distribution to document, or all of them
+        type: string
+        default: all
 
 permissions:
   contents: read
@@ -48,37 +61,56 @@ jobs:
           chmod +x /usr/local/bin/pkldoc
           pkldoc --version
 
-      # Pkldoc reads every module of every package in one run, and it needs the
-      # doc-package-info.pkl of each one. Take the newest release of each
-      # distribution, and the docsite-info.pkl that titles the site.
-      - name: Collect the newest release of each distribution
+      # The releases of a distribution go in from the oldest to the newest, so
+      # that the newest one lands last and the current link of the package
+      # points at it.
+      - name: Generate
+        working-directory: pkl
+        env:
+          RELEASES: ${{ inputs.releases || 'all' }}
         run: |
-          mkdir -p build/docs-src
-          cp pkl/docsite-info.pkl build/docs-src/
+          out="$GITHUB_WORKSPACE/build/docs"
+          count=0
 
-          for dist in pkl/*/; do
-            name=$(basename "$dist")
-            newest=$(ls "$dist" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          for dir in */; do
+            name=${dir%/}
+            versions=$(ls "$name" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)
 
-            if [ -z "$newest" ]; then
-              continue
+            if [ "$RELEASES" != "all" ]; then
+              versions=$(echo "$versions" | tail -n "$RELEASES")
             fi
 
-            echo "  $name -> $newest"
-            mkdir -p "build/docs-src/$name"
-            cp -R "$dist$newest" "build/docs-src/$name/"
+            for version in $versions; do
+              echo "  $name $version"
+
+              { printf 'docsite-info.pkl\0'; find "$name/$version" -name '*.pkl' -print0; } \
+                | xargs -0 pkldoc -o "$out" >/dev/null
+
+              count=$((count + 1))
+            done
           done
 
-      - name: Generate
-        working-directory: build/docs-src
-        run: |
-          # One invocation, because a second batch would carry no
-          # doc-package-info.pkl and Pkldoc would refuse it. The paths of the
-          # newest releases stay well inside the limit of the command line.
-          find . -name '*.pkl' -print0 | sed 's|\./||g' \
-            | xargs -0 pkldoc -o "$GITHUB_WORKSPACE/build/docs" >/dev/null
+          echo "documented $count libraries"
 
-          du -sh "$GITHUB_WORKSPACE/build/docs"
+      # A published site must stay under 1 GB. Measure it in bytes, and not in
+      # blocks, because a block count adds padding for each of the tens of
+      # thousands of small files and overstates the site by a quarter.
+      - name: Check the size of the site
+        run: |
+          bytes=$(du -sb build/docs | cut -f1)
+          limit=$((1024 * 1024 * 1024))
+          percent=$((bytes * 100 / limit))
+
+          echo "site: $((bytes / 1024 / 1024)) MiB, $percent% of the 1 GB limit of GitHub Pages"
+
+          if [ "$bytes" -ge "$limit" ]; then
+            echo "::error::The site is larger than the 1 GB limit of GitHub Pages. Run the workflow by hand with a smaller releases input."
+            exit 1
+          fi
+
+          if [ "$percent" -ge 80 ]; then
+            echo "::warning::The site fills $percent% of the 1 GB limit of GitHub Pages. Lower the releases input before it passes the limit."
+          fi
 
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
 
