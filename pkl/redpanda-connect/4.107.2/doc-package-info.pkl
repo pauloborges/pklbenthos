@@ -1,0 +1,13 @@
+/// Pkl library for the configuration of Redpanda Connect 4.107.2.
+///
+/// Every component of the build has a module of its own, and every field
+/// of a component has a type. A pipeline amends `Configuration.pkl` and
+/// renders as the YAML that Redpanda Connect reads.
+amends "pkl:DocPackageInfo"
+
+name = "com.redpanda.connect"
+version = "4.107.2"
+importUri = "https://github.com/pauloborges/pklbenthos/releases/download/redpanda-connect-4.107.2@1.0.0/redpanda-connect-4.107.2@1.0.0#/"
+authors { "Paulo Borges <coding@pauloborges.pw>" }
+sourceCode = "https://github.com/pauloborges/pklbenthos"
+issueTracker = "https://github.com/pauloborges/pklbenthos/issues"
